@@ -1,0 +1,46 @@
+name: Publish SVJ hosting
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dinfritid-hosting
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install scoped deployment credentials
+        env:
+          REGISTRY_CONFIG: ${{ secrets.SVJ_REGISTRY_CONFIG }}
+          KUBE_CONFIG: ${{ secrets.SVJ_KUBECONFIG }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/docker"
+          python3 - <<'PY'
+          import os,pathlib,base64
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          (root/'docker/config.json').write_text(os.environ['REGISTRY_CONFIG'])
+          (root/'kubeconfig').write_bytes(base64.b64decode(os.environ['KUBE_CONFIG']))
+          PY
+      - name: Build, publish and roll out immutable site
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: |
+          image="registry.digitalocean.com/tesseracs/dinfritid:site-$GITHUB_SHA"
+          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" -t "$image" .
+          docker push "$image"
+          kubectl -n dinfritid-public set image deployment/dinfritid-site web="$image"
+          kubectl -n dinfritid-public rollout status deployment/dinfritid-site --timeout=180s
+      - name: Verify public source identity
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          with urllib.request.urlopen('https://dinfritid.nu/_release.json',timeout=30) as r:
+              assert json.load(r)['revision']==os.environ['GITHUB_SHA']
+          PY
