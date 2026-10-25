@@ -41,6 +41,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json,os,urllib.request
-          with urllib.request.urlopen('https://dinfritid.nu/_release.json',timeout=30) as r:
+          request=urllib.request.Request('https://dinfritid.nu/_release.json',headers={'User-Agent':'SVJ-Deployment-Verification/1.0'})
+          with urllib.request.urlopen(request,timeout=30) as r:
               assert json.load(r)['revision']==os.environ['GITHUB_SHA']
           PY
