@@ -35,7 +35,9 @@ jobs:
           image="registry.digitalocean.com/tesseracs/dinfritid:site-$GITHUB_SHA"
           docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" -t "$image" .
           docker push "$image"
-          kubectl -n dinfritid-public set image deployment/dinfritid-site web="$image"
+          digest="$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')"
+          case "$digest" in registry.digitalocean.com/tesseracs/dinfritid@sha256:*) ;; *) exit 1 ;; esac
+          kubectl -n dinfritid-public set image deployment/dinfritid-site web="$digest"
           kubectl -n dinfritid-public rollout status deployment/dinfritid-site --timeout=180s
       - name: Verify public source identity
         run: |
